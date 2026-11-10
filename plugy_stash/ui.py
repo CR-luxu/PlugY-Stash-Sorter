@@ -1857,14 +1857,6 @@ class StashApp:
         if not self.stash.path:
             self.save_as()
             return
-        if not messagebox.askyesno(
-            "保存到原文件",
-            "请确认暗黑破坏神 II 已完全退出。\n\n"
-            "游戏运行时保存会被游戏重新覆盖，甚至导致物品丢失。\n\n"
-            "继续保存吗？",
-            parent=self.root,
-        ):
-            return
         self._write_to(self.stash.path)
 
     def save_as(self) -> None:
@@ -1896,15 +1888,19 @@ class StashApp:
     def _write_to(self, path: Path, silent: bool = False) -> bool:
         assert self.stash is not None
         if self._game_in_use():
-            if not silent:
-                messagebox.showwarning(
-                    "游戏仍在运行",
-                    "检测到游戏仍在运行，已取消保存。\n\n"
-                    "请完全退出游戏后再保存，避免游戏回写导致仓库损坏。",
-                    parent=self.root,
-                )
-            self._set_status("检测到游戏仍在运行，已取消保存", error=True)
-            return False
+            if silent:
+                self._set_status("检测到游戏仍在运行，自动保存已推迟", error=True)
+                return False
+            if not messagebox.askyesno(
+                "游戏仍在运行",
+                "检测到游戏仍在运行。\n\n"
+                "此时写盘可能被游戏覆盖，仍有一定概率导致仓库损坏。\n"
+                "建议完全退出游戏后再保存。\n\n"
+                "仍要保存吗？",
+                parent=self.root,
+            ):
+                self._set_status("已取消保存：游戏仍在运行", error=True)
+                return False
         try:
             data = self.stash.to_bytes()
             # Verify before touching the real save file.
