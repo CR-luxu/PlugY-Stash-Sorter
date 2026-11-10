@@ -292,6 +292,7 @@ class StashApp:
         actions = tk.Frame(header, bg=BG)
         actions.pack(side="right", padx=self._s(20), pady=self._s(18))
         self._button(actions, "打开", self.open_dialog).pack(side="left", padx=3)
+        self._button(actions, "刷新", self.refresh).pack(side="left", padx=3)
         self._button(actions, "查找", self.auto_find).pack(side="left", padx=3)
         self._button(actions, "另存", self.save_as).pack(side="left", padx=3)
         self._button(actions, "保存", self.save, primary=True).pack(side="left", padx=(3, 8))
@@ -613,7 +614,7 @@ class StashApp:
         self.dirty_label.pack(side="right", padx=16)
         tk.Label(
             footer,
-            text="F5 整理   ·   Ctrl+S 保存   ·   Ctrl+Z 撤销   ·   双击物品查看详情",
+            text="F5 整理   ·   Ctrl+R 刷新   ·   Ctrl+S 保存   ·   Ctrl+Z 撤销   ·   双击物品查看详情",
             bg="#0c0c0c",
             fg="#5d564a",
             font=(self.font_family, 7),
@@ -622,6 +623,7 @@ class StashApp:
 
     def _bind_keys(self) -> None:
         self.root.bind("<Control-o>", lambda _e: self.open_dialog())
+        self.root.bind("<Control-r>", lambda _e: self.refresh())
         self.root.bind("<Control-s>", lambda _e: self.save())
         self.root.bind("<Control-Shift-S>", lambda _e: self.save_as())
         self.root.bind("<Control-z>", lambda _e: self.undo())
@@ -1165,6 +1167,33 @@ class StashApp:
         self._set_status(f"已打开：{path.name}")
         if stash.warnings and not quiet:
             self.show_warnings()
+
+    def refresh(self) -> None:
+        if not self.stash or not self.stash.path:
+            messagebox.showinfo("尚未打开存档", "请先打开一个 PlugY 仓库文件。", parent=self.root)
+            return
+        if self.dirty and not messagebox.askyesno(
+            "刷新存档",
+            "重新读取会丢弃当前未保存的整理结果。\n\n确定要刷新吗？",
+            parent=self.root,
+        ):
+            return
+        path = self.stash.path
+        try:
+            raw = path.read_bytes()
+            stash = parse_stash_bytes(raw, path)
+        except (OSError, StashError, ValueError) as exc:
+            messagebox.showerror("刷新失败", f"无法重新读取存档：\n{exc}", parent=self.root)
+            self._set_status("刷新失败", error=True)
+            return
+        self.stash = stash
+        self.base_raw = raw
+        self.current_page = min(self.current_page, max(0, len(stash.pages) - 1))
+        self.selected = None
+        self._mark_clean()
+        self._set_details(None)
+        self._refresh_all()
+        self._set_status(f"已重新读取：{path.name} · {len(stash.pages)} 页")
 
     def auto_find(self) -> None:
         self._set_status("正在查找常见存档目录…")
@@ -1995,6 +2024,7 @@ class StashApp:
             "end",
             "1. 完全退出暗黑破坏神 II（包括 PlugY 启动器）。\n"
             "2. 点击「打开存档」，选择 _LOD_SharedStashSave.sss。\n"
+            "   游戏保存或外部修改后，可点「刷新」（Ctrl+R）重新读取磁盘文件。\n"
             "3. 选择整理方式，点击「开始整理」。\n"
             "4. 检查各页结果，确认无误后点击「保存」。\n"
             "5. 保存时会在原文件旁生成带时间戳的 .bak 备份，每个存档只保留最近 5 个。\n\n",
