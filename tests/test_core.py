@@ -19,6 +19,18 @@ class StashParserTests(unittest.TestCase):
         self.assertEqual([i.code for i in stash.pages[0].items], ["ibk", "hp1", "hp2"])
         self.assertEqual((stash.pages[0].items[0].x, stash.pages[0].items[0].y), (7, 6))
 
+    def test_added_page_does_not_invent_flags(self):
+        stash = parse_stash(FIXTURE)
+        for page in stash.pages:
+            page.has_flags = False
+            page.flags = 0
+        plan = plan_sort(stash, "type", reserve_pages=14)
+        self.assertGreater(plan.added_pages, 0)
+        apply_plan(stash, plan)
+        self.assertFalse(any(page.has_flags for page in stash.pages))
+        reparsed = parse_stash_bytes(stash.to_bytes())
+        self.assertFalse(any(page.has_flags for page in reparsed.pages))
+
     def test_personal_stash_header(self):
         raw = FIXTURE.read_bytes()
         personal = b"CSTM" + b"01" + b"\x00" * 4 + (14).to_bytes(4, "little") + raw[10:]
