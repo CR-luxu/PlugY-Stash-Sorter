@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from .gamewatch import game_running, is_pid_running, list_windows, window_alive
+from .gamewatch import game_running, game_window_running, is_pid_running, list_windows, window_alive
 from .backups import prune_backups
 from .gems import apply_gem_plan, plan_gem_upgrade
 from .naming import name_pages
@@ -488,7 +488,7 @@ class StashApp:
         window_row.pack(fill="x", padx=10, pady=(1, 0))
         self.game_window_label = self._label(
             window_row,
-            "窗口：自动检测 Game.exe",
+            "窗口：自动检测游戏窗口",
             size=7,
             color=MUTED,
             bg=PANEL,
@@ -731,7 +731,7 @@ class StashApp:
                 return
             running = True
         else:
-            running = game_running()
+            running = self._game_in_use()
         target = (
             f"所选窗口：{selected.title}（{selected.exe or selected.pid}）\n\n"
             if selected is not None
@@ -782,7 +782,7 @@ class StashApp:
             if selected is not None:
                 running = window_alive(selected.hwnd) and is_pid_running(selected.pid)
             else:
-                running = game_running()
+                running = self._game_in_use()
         except Exception:
             running = False
         if self._session_save_changed():
@@ -836,7 +836,7 @@ class StashApp:
         ).pack(fill="x", padx=self._s(16), pady=(self._s(14), self._s(2)))
         tk.Label(
             win,
-            text="如果自动检测不到 Game.exe，可以在这里手动指定；选择后只监控这个窗口。",
+            text="如果自动检测不到游戏窗口，可以在这里手动指定；选择后只监控这个窗口。",
             bg=BG,
             fg=MUTED,
             font=(self.font_family, 8),
@@ -881,7 +881,7 @@ class StashApp:
                 self._auto_waiting = False
                 self.auto_after_game.set(False)
             self._update_game_window_label()
-            self._set_status("已恢复自动检测 Game.exe")
+            self._set_status("已恢复自动检测游戏窗口")
             win.destroy()
 
         lb.bind("<Double-Button-1>", lambda _e: use_selected())
@@ -894,7 +894,7 @@ class StashApp:
     def _update_game_window_label(self) -> None:
         selected = self._selected_game_window
         if selected is None:
-            self.game_window_label.config(text="窗口：自动检测 Game.exe", fg=MUTED)
+            self.game_window_label.config(text="窗口：自动检测游戏窗口", fg=MUTED)
             return
         title = selected.title
         if len(title) > 22:
@@ -1889,7 +1889,7 @@ class StashApp:
         if selected is not None and window_alive(selected.hwnd) and is_pid_running(selected.pid):
             return True
         try:
-            return game_running()
+            return game_running() or game_window_running(exclude_pid=os.getpid())
         except Exception:
             return False
 
@@ -2059,7 +2059,7 @@ class StashApp:
         text.insert("end", "本局游戏退出后自动整理\n", "h")
         text.insert(
             "end",
-            "勾选「每次退出/回主菜单后自动整理并保存」后，程序会检测 Game.exe / Diablo II.exe，"
+            "勾选「每次退出/回主菜单后自动整理并保存」后，程序会检测游戏进程和游戏窗口（包括自定义登录器），"
             "并监测存档目录下 .d2s 的更新；回到主菜单只记录本局结束，不会在游戏运行时写盘。\n"
             "如果检测不到，可以点「选择窗口」手动指定游戏窗口。\n"
             "游戏完全退出后等待 1 秒重新读取存档，按当前设置整理并自动保存，同时生成 .bak 备份。\n"

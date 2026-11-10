@@ -6,7 +6,7 @@ import os
 from ctypes import wintypes
 from dataclasses import dataclass
 
-DEFAULT_GAME_PROCESSES = {"game.exe", "diablo ii.exe"}
+DEFAULT_GAME_PROCESSES = {"game.exe", "diablo ii.exe", "d2loader.exe", "d2loader-high.exe"}
 
 TH32CS_SNAPPROCESS = 0x00000002
 MAX_PATH = 260
@@ -35,6 +35,7 @@ class WindowInfo:
     pid: int
     title: str
     exe: str
+    class_name: str = ""
 
     @property
     def label(self) -> str:
@@ -130,12 +131,15 @@ def list_windows(exclude_pid: int | None = None) -> list[WindowInfo]:
             process_id = int(pid.value)
             if exclude_pid and process_id == exclude_pid:
                 return True
+            class_buffer = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, class_buffer, 256)
             windows.append(
                 WindowInfo(
                     hwnd=int(hwnd),
                     pid=process_id,
                     title=title,
                     exe=pmap.get(process_id, ""),
+                    class_name=class_buffer.value,
                 )
             )
         except Exception:
@@ -153,3 +157,28 @@ def list_windows(exclude_pid: int | None = None) -> list[WindowInfo]:
         )
     )
     return windows
+
+
+GAME_PROCESS_HINTS = ("diablo", "d2loader", "game.exe")
+GAME_TITLE_HINTS = (
+    "暗黑破坏神",
+    "暗黑破壞神",
+    "破壞神",
+    "破坏神",
+    "登录器",
+    "登錄器",
+)
+
+
+def game_window_running(exclude_pid: int | None = None) -> bool:
+    """Detect a visible D2/PlugY window even if its process name is custom."""
+    if exclude_pid is None:
+        exclude_pid = os.getpid()
+    for window in list_windows(exclude_pid=exclude_pid):
+        process_text = f"{window.exe} {window.class_name}".lower()
+        if any(hint in process_text for hint in GAME_PROCESS_HINTS):
+            return True
+        title = window.title.lower()
+        if any(hint in title for hint in GAME_TITLE_HINTS):
+            return True
+    return False
