@@ -179,12 +179,17 @@ def plan_sort(
         page_meta = page_meta[:page_limit]
 
     shared = stash.is_shared
+    # Follow the page-header style already used by this stash.  PlugY's
+    # normal shared/personal stashes do not carry the optional 4-byte flags;
+    # inventing flags on a newly added page can make the game reject the file.
+    default_has_flags = stash.pages[0].has_flags if stash.pages else False
+    default_flags = stash.pages[0].flags if stash.pages else 0
 
     def new_page_meta() -> StashPage:
         return StashPage(
             index=len(page_meta),
-            flags=1 if shared else 0,
-            has_flags=True,
+            flags=default_flags,
+            has_flags=default_has_flags,
             name_bytes=b"",
             items=[],
         )
@@ -235,8 +240,8 @@ def plan_sort(
         page_meta.append(
             StashPage(
                 index=len(page_meta),
-                flags=1 if shared else 0,
-                has_flags=True,
+                flags=default_flags,
+                has_flags=default_has_flags,
                 name_bytes=b"",
                 items=[],
             )
