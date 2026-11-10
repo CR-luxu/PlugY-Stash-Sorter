@@ -737,7 +737,7 @@ class StashApp:
         )
         saves = self._character_saves()
         save_hint = (
-            "会监测角色存档 .d2s 的更新：回到主菜单或退出游戏都会触发。"
+            "会监测角色存档 .d2s 的更新；回到主菜单只确认本局结束，真正写盘会等游戏完全退出。"
             if saves
             else "未找到角色存档 .d2s，只能等游戏进程退出时触发。"
         )
@@ -747,11 +747,11 @@ class StashApp:
             + save_hint
             + "\n\n"
             + (
-                "检测到游戏正在运行：回到主菜单或游戏退出后，程序会等待 1 秒，"
+                "检测到游戏正在运行：回到主菜单后先等待，完全退出游戏后等待 1 秒，"
                 "重新读取存档，自动整理并保存，同时生成 .bak 备份（每个存档保留最近 5 个）。\n\n"
                 if running
                 else "当前没有检测到游戏进程：程序会等待下一次游戏启动，"
-                "回到主菜单或退出后自动整理并保存，同时生成 .bak 备份（每个存档保留最近 5 个）。\n\n"
+                "再重新读取最终存档，自动整理并保存，同时生成 .bak 备份（每个存档保留最近 5 个）。\n\n"
             )
             + "自动整理会使用当前选择的整理方式、留空页数、自动命名和自动合成宝石设置。\n"
             "启用后会持续监听：每一局回到主菜单/退出都会自动整理一次，直到手动取消勾选。\n\n"
@@ -907,6 +907,15 @@ class StashApp:
             self._set_status("已取消本局游戏后自动整理")
             return
         if not self.stash or not self.stash.path:
+            return
+        if self._game_in_use():
+            self._refresh_save_baseline()
+            self._auto_armed_at = time.monotonic()
+            self._auto_game_seen = True
+            self._auto_ignore_process_exit = False
+            self._auto_waiting = True
+            self._set_status("检测到游戏仍在运行；为避免损坏，等完全退出后自动整理…")
+            self.root.after(1500, self._auto_poll)
             return
         path = self.stash.path
         try:
@@ -1846,16 +1855,40 @@ class StashApp:
         if path:
             self._write_to(Path(path))
 
+    def _game_in_use(self) -> bool:
+        selected = self._selected_game_window
+        if selected is not None and window_alive(selected.hwnd) and is_pid_running(selected.pid):
+            return True
+        try:
+            return game_running()
+        except Exception:
+            return False
+
     def _write_to(self, path: Path, silent: bool = False) -> bool:
         assert self.stash is not None
+        if self._game_in_use():
+            if not silent:
+                messagebox.showwarning(
+                    "游戏仍在运行",
+                    "检测到游戏仍在运行，已取消保存。\n\n"
+                    "请完全退出游戏后再保存，避免游戏回写导致仓库损坏。",
+                    parent=self.root,
+                )
+            self._set_status("检测到游戏仍在运行，已取消保存", error=True)
+            return False
         try:
             data = self.stash.to_bytes()
             # Verify before touching the real save file.
-            parse_stash_bytes(data)
+            checked = parse_stash_bytes(data)
+            layout_errors = [
+                w for w in checked.warnings if "重叠" in w or "超出" in w
+            ]
+            if layout_errors:
+                raise StashError("\n".join(layout_errors[:5]))
         except (StashError, ValueError) as exc:
             messagebox.showerror(
                 "存档校验失败",
-                f"整理后的数据无法重新解析，已取消保存：\n{exc}",
+                f"整理后的数据无法重新解析或物品位置异常，已取消保存：\n{exc}",
                 parent=self.root,
             )
             return False
@@ -1997,9 +2030,9 @@ class StashApp:
         text.insert(
             "end",
             "勾选「每次退出/回主菜单后自动整理并保存」后，程序会检测 Game.exe / Diablo II.exe，"
-            "并监测存档目录下 .d2s 的更新；回到主菜单或退出游戏都会触发。\n"
+            "并监测存档目录下 .d2s 的更新；回到主菜单只记录本局结束，不会在游戏运行时写盘。\n"
             "如果检测不到，可以点「选择窗口」手动指定游戏窗口。\n"
-            "触发后等待 1 秒重新读取磁盘存档，按当前设置整理并自动保存，同时生成 .bak 备份。\n"
+            "游戏完全退出后等待 1 秒重新读取存档，按当前设置整理并自动保存，同时生成 .bak 备份。\n"
             "启用后会持续监听，每一局都会触发；手动取消勾选才停止。\n\n",
             "m",
         )
